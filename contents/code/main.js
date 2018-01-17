@@ -9,6 +9,8 @@ var cAct;
 
 // Array for included clients
 var tiles = [];
+var forwardScreen = true;
+var computedScreen = false;
 
 // KWin client.resourceClasses & client.resourceNames that are not tiled
 var ignoredClients = [
@@ -177,6 +179,49 @@ function init() {
 }
 
 /*
+ * Helper function to move to next/previous screen.
+ *
+ * @param next: if True then move to next screen, othewise
+ *              move to the previous screen.
+ */
+function helpMoveToScreen(next) {
+  var client = ws.activeClient;
+  var n = ws.numScreens;
+  // apparently % is not the modulo operator in javascript so this hack is necessary when going back to previous screens (i.e. having negative numbers) :(
+  var scr = (((client.screen + (next ? 1 : -1)) % n) + n) % n;
+  throwClient(client, client.desktop, client.screen, client.desktop, scr);
+}
+
+/*
+ * Compute wether the screen layout is flipped or not.
+ * 
+ * This will move the client to the next screen and the previous screen, both
+ * relative to the original screen, and get a sense of the x locations of
+ * these movements. And compute a boolean value to indicate if the screen
+ * layout is flipped.
+ *
+ * @param client: the client to be moved.
+ *
+ */
+function computeScreen(client) {
+  var oldX = client.geometry.x;
+  helpMoveToScreen(true);
+  var nextX = client.geometry.x;
+  helpMoveToScreen(false);
+  helpMoveToScreen(false);
+  var prevX = client.geometry.x;
+  helpMoveToScreen(true);
+  
+  if ((nextX < oldX && prevX < oldX && nextX > prevX) // Edge case for right most edge
+     ||(nextX > oldX && prevX > oldX && nextX > prevX) // Edge case for left most edge
+     ||(prevX > oldX && nextX < oldX)) { // General case
+    forwardScreen = false;
+  }
+  computedScreen = true;
+}
+
+
+/*
  * Move to next/previous screen.
  *
  * @param next: if True then move to next screen, othewise
@@ -185,11 +230,18 @@ function init() {
 
 function moveToScreen(next) {
   var client = ws.activeClient;
-  var n = ws.numScreens;
-  // apparently % is not the modulo operator in javascript so this hack is necessary when going back to previous screens (i.e. having negative numbers) :(
-  var scr = (((client.screen + (next ? 1 : -1)) % n) + n) % n;
-  throwClient(client, client.desktop, client.screen, client.desktop, scr);
-  tileClients();
+  if (ws.numScreens === 2) {
+    var scr = client.screen === 1 ? 0 : 1;
+    throwClient(client, client.desktop, client.screen, client.desktop, scr);
+    tileClients();
+  } else if (ws.numScreens >= 3) {
+      if (!computedScreen) {
+        computeScreen(client);
+      }
+      next = forwardScreen ? next: !next;
+      helpMoveToScreen(next);
+      tileClients();
+  }
 }
 
 
